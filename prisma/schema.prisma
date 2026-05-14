@@ -1,0 +1,309 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USERS ====================
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  username           String    @unique
+  password           String
+  fullName           String
+  phoneNumber        String?
+  profileImage       String?
+  bio                String?
+  role               UserRole  @default(USER)
+  isVerified         Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  properties         Property[]
+  favorites          Favorite[]
+  messages           Message[]
+  reviews            Review[]
+  subscriptions      Subscription[]
+  premiumListings    PremiumListing[]
+
+  @@index([email])
+  @@index([username])
+}
+
+enum UserRole {
+  USER
+  AGENT
+  ADMIN
+}
+
+// ==================== LOCATIONS ====================
+model Province {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  cities    City[]
+
+  @@index([name])
+}
+
+model City {
+  id         String   @id @default(cuid())
+  name       String
+  provinceId String
+  createdAt  DateTime @default(now())
+
+  province   Province   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  districts  District[]
+
+  @@unique([name, provinceId])
+  @@index([provinceId])
+}
+
+model District {
+  id        String   @id @default(cuid())
+  name      String
+  cityId    String
+  createdAt DateTime @default(now())
+
+  city     City[]
+  villages Village[]
+
+  @@unique([name, cityId])
+  @@index([cityId])
+}
+
+model Village {
+  id         String   @id @default(cuid())
+  name       String
+  districtId String
+  createdAt  DateTime @default(now())
+
+  district   District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@unique([name, districtId])
+  @@index([districtId])
+}
+
+// ==================== PROPERTIES ====================
+model Property {
+  id              String    @id @default(cuid())
+  title           String
+  slug            String    @unique
+  description     String    @db.Text
+  propertyType    PropertyType
+  listingType     ListingType
+  price           Float
+  currency        String    @default("IDR")
+  bedrooms        Int
+  bathrooms       Int
+  landArea        Float?    // in m²
+  buildArea       Float?    // in m²
+  
+  // Location
+  provinceId      String
+  cityId          String
+  districtId      String
+  villageId       String?
+  address         String
+  latitude        Float
+  longitude       Float
+  
+  // Owner
+  ownerId         String
+  whatsappNumber  String?
+  
+  // Status
+  status          PropertyStatus @default(DRAFT)
+  views           Int      @default(0)
+  isPremium       Boolean  @default(false)
+  isFeatured      Boolean  @default(false)
+  
+  // SEO
+  metaTitle       String?
+  metaDescription String?
+  metaKeywords    String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  owner           User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  images          PropertyImage[]
+  favorites       Favorite[]
+  reviews         Review[]
+  premiumListing  PremiumListing?
+
+  @@index([ownerId])
+  @@index([propertyType])
+  @@index([listingType])
+  @@index([status])
+  @@index([slug])
+  @@fulltext([title, description])
+}
+
+enum PropertyType {
+  RUMAH
+  RUKO
+  KONTRAKAN
+  KOS_KOSAN
+  APARTEMEN
+  TANAH
+  KANTOR
+}
+
+enum ListingType {
+  JUAL
+  SEWA
+}
+
+enum PropertyStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  EXPIRED
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String
+  url        String
+  caption    String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+// ==================== FAVORITES ====================
+model Favorite {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@index([propertyId])
+}
+
+// ==================== REVIEWS ====================
+model Review {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String
+  rating     Int      // 1-5
+  title      String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([propertyId])
+}
+
+// ==================== MESSAGING ====================
+model Message {
+  id        String   @id @default(cuid())
+  senderId  String
+  receiverId String
+  propertyId String?
+  content   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  sender    User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([propertyId])
+}
+
+// ==================== SUBSCRIPTIONS ====================
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  plan      SubscriptionPlan
+  status    SubscriptionStatus @default(ACTIVE)
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PROFESSIONAL
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+// ==================== PREMIUM LISTINGS ====================
+model PremiumListing {
+  id         String   @id @default(cuid())
+  userId     String
+  propertyId String @unique
+  boostLevel Int    @default(1) // 1-3
+  startDate  DateTime @default(now())
+  endDate    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([propertyId])
+  @@index([endDate])
+}
+
+// ==================== ADS ====================
+model Advertisement {
+  id        String   @id @default(cuid())
+  title     String
+  image     String
+  url       String
+  position  AdPosition
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([position])
+  @@index([isActive])
+}
+
+enum AdPosition {
+  HOMEPAGE_TOP
+  HOMEPAGE_MIDDLE
+  SEARCH_RESULTS
+  PROPERTY_DETAIL
+  SIDEBAR
+}
